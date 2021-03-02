@@ -337,8 +337,18 @@ void main_pinned() {
     cudaMemcpyToSymbol(a_const, a, NUM_ELEMENTS * sizeof(int));
     cudaMemcpyToSymbol(b_const, b, NUM_ELEMENTS * sizeof(int));
 
+	clock_t start = clock();
     host_shared_main(a, b, c, dev_a, dev_b, dev_c);
+    double shared_time = ((double) (clock() - start)) / CLOCKS_PER_SEC;
+
+    start = clock();
     host_const_main(a, b, c, dev_c);
+	double const_time = ((double) (clock() - start)) / CLOCKS_PER_SEC;
+
+	printf("Time taken for pinned memory copied to shared memory: \
+           %f seconds. \n", shared_time);
+	printf("Time taken for pinned memory copied to constant memory: \
+           %f seconds. \n", const_time);
 
 	cudaFree(dev_a);
 	cudaFree(dev_b);
@@ -349,17 +359,8 @@ void main_pinned() {
 }
 
 int main(int argc, char** argv) {
-	clock_t start = clock();
     main_pageable();
-	double pageable_time = ((double) (clock() - start)) / CLOCKS_PER_SEC;
-
-	start = clock();
     main_pinned();
-	double pinned_time = ((double) (clock() - start)) / CLOCKS_PER_SEC;
-
-	printf("Time taken for pageable memory: %f seconds. \n", pageable_time);
-	printf("Time taken for pinned memory: %f seconds. \n", pinned_time);
-
     main_caesar();
 
 	return 0;
