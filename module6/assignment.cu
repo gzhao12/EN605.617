@@ -3,8 +3,19 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define NUM_ELEMENTS 256
-#define NUM_BLOCKS 2
+#define BLOCK_SIZE 256
+#define NUM_BLOCKS 1
+#define TOTAL_THREADS BLOCK_SIZE * NUM_BLOCKS
+
+__device__ void copy_data_to_shared(const int * const data,
+                                    int * const tmp,
+                                    const int num_elements,
+                                    const int tid) {
+    for (int i = 0; i < num_elements; i++) {
+        tmp[i + tid] = data[i + tid];
+    }
+    __syncthreads();
+}
 
 __global__ void add(int * a, int * b, int * c, int num_elements) {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -46,33 +57,90 @@ __global__ void mod(int * a, int * b, int * c, int num_elements) {
     }
 }
 
-__global__ void add_noreg(int * a, int * b, int * c, int num_elements) {
+__device__ void add_noreg(int * a, int * b, int * c, int num_elements) {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	if (i < num_elements) {
         c[i] = a[i] + b[i];
     }
 }
 
-__global__ void sub_noreg(int * a, int * b, int * c, int num_elements) {
+__device__ void sub_noreg(int * a, int * b, int * c, int num_elements) {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	if (i < num_elements) {
         c[i] = a[i] - b[i];
     }
 }
 
-__global__ void mult_noreg(int * a, int * b, int * c, int num_elements) {
+__device__ void mult_noreg(int * a, int * b, int * c, int num_elements) {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	if (i < num_elements) {
         c[i] = a[i] * b[i];
     }
 }
 
-__global__ void mod_noreg(int * a, int * b, int * c, int num_elements) {
+__device__ void mod_noreg(int * a, int * b, int * c, int num_elements) {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	if (i < num_elements) {
         c[i] = a[i] % b[i];
     }
 }
+
+__global__ void add_shared(int * a, int * b, int * c, const int num_elements) {
+    const int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+    __shared__ int a_tmp[TOTAL_THREADS];
+    __shared__ int b_tmp[TOTAL_THREADS];
+    __shared__ int c_tmp[TOTAL_THREADS];
+
+    copy_data_to_shared(a, a_tmp, num_elements, tid);
+    copy_data_to_shared(b, b_tmp, num_elements, tid);
+
+    add_noreg(a_tmp, b_tmp, c_tmp, num_elements);
+
+    c[tid] = c_tmp[tid]; // copy from shared memory to global
+}
+
+__global__ void sub_shared(int * a, int * b, int * c, const int num_elements) {
+    const int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+    __shared__ int a_tmp[TOTAL_THREADS];
+    __shared__ int b_tmp[TOTAL_THREADS];
+    __shared__ int c_tmp[TOTAL_THREADS];
+
+    copy_data_to_shared(a, a_tmp, num_elements, tid);
+    copy_data_to_shared(b, b_tmp, num_elements, tid);
+
+    sub_noreg(a_tmp, b_tmp, c_tmp, num_elements);
+
+    c[tid] = c_tmp[tid]; // copy from shared memory to global
+}
+
+__global__ void mult_shared(int * a, int * b, int * c, const int num_elements) {
+    const int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+    __shared__ int a_tmp[TOTAL_THREADS];
+    __shared__ int b_tmp[TOTAL_THREADS];
+    __shared__ int c_tmp[TOTAL_THREADS];
+
+    copy_data_to_shared(a, a_tmp, num_elements, tid);
+    copy_data_to_shared(b, b_tmp, num_elements, tid);
+
+    mult_noreg(a_tmp, b_tmp, c_tmp, num_elements);
+
+    c[tid] = c_tmp[tid]; // copy from shared memory to global
+}
+
+__global__ void mod_shared(int * a, int * b, int * c, const int num_elements) {
+    const int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+    __shared__ int a_tmp[TOTAL_THREADS];
+    __shared__ int b_tmp[TOTAL_THREADS];
+    __shared__ int c_tmp[TOTAL_THREADS];
+
+    copy_data_to_shared(a, a_tmp, num_elements, tid);
+    copy_data_to_shared(b, b_tmp, num_elements, tid);
+
+    mod_noreg(a_tmp, b_tmp, c_tmp, num_elements);
+
+    c[tid] = c_tmp[tid]; // copy from shared memory to global
+}
+
 
 // this function serves as both the encyrption and decryption function
 // the negative of the encryption offset just needs to be passed in to decrpt
@@ -115,68 +183,71 @@ __global__ void caesar_cipher(char * a, char * b, int length, int offset) {
 
 void run_calcs(int *a, int *b, int *c, int *dev_a, int *dev_b, int *dev_c) {
     printf("Calculations for %d block(s) of size %d threads \n", NUM_BLOCKS, 
-            NUM_ELEMENTS);
+            BLOCK_SIZE);
 
 	printf("Addition Calculations: \n");
-	add<<<NUM_BLOCKS, NUM_ELEMENTS>>>(dev_a, dev_b, dev_c, NUM_ELEMENTS);
-    cudaMemcpy(c, dev_c, NUM_ELEMENTS * sizeof(int), cudaMemcpyDeviceToHost);
-	for (int i = 0; i < NUM_ELEMENTS; i++) {
+	add<<<NUM_BLOCKS, BLOCK_SIZE>>>(dev_a, dev_b, dev_c, TOTAL_THREADS);
+    cudaMemcpy(c, dev_c, TOTAL_THREADS * sizeof(int), cudaMemcpyDeviceToHost);
+	for (int i = 0; i < TOTAL_THREADS; i++) {
 		printf("%d + %d = %d \n", a[i], b[i], c[i]);
 	}
 
 	printf("Subtraction Calculations: \n");
-	sub<<<NUM_BLOCKS, NUM_ELEMENTS>>>(dev_a, dev_b, dev_c, NUM_ELEMENTS);
-    cudaMemcpy(c, dev_c, NUM_ELEMENTS * sizeof(int), cudaMemcpyDeviceToHost);
-	for (int i = 0; i < NUM_ELEMENTS; i++) {
+	sub<<<NUM_BLOCKS, BLOCK_SIZE>>>(dev_a, dev_b, dev_c, TOTAL_THREADS);
+    cudaMemcpy(c, dev_c, TOTAL_THREADS * sizeof(int), cudaMemcpyDeviceToHost);
+	for (int i = 0; i < TOTAL_THREADS; i++) {
 		printf("%d - %d = %d \n", a[i], b[i], c[i]);
 	}
 
 	printf("Multiplication Calculations: \n");
-	mult<<<NUM_BLOCKS, NUM_ELEMENTS>>>(dev_a, dev_b, dev_c, NUM_ELEMENTS);
-    cudaMemcpy(c, dev_c, NUM_ELEMENTS * sizeof(int), cudaMemcpyDeviceToHost);
-	for (int i = 0; i < NUM_ELEMENTS; i++) {
+	mult<<<NUM_BLOCKS, BLOCK_SIZE>>>(dev_a, dev_b, dev_c, TOTAL_THREADS);
+    cudaMemcpy(c, dev_c, TOTAL_THREADS * sizeof(int), cudaMemcpyDeviceToHost);
+	for (int i = 0; i < TOTAL_THREADS; i++) {
 		printf("%d * %d = %d \n", a[i], b[i], c[i]);
 	}
 
 	printf("Modulo Calculations: \n");
-	mod<<<NUM_BLOCKS, NUM_ELEMENTS>>>(dev_a, dev_b, dev_c, NUM_ELEMENTS);
-    cudaMemcpy(c, dev_c, NUM_ELEMENTS * sizeof(int), cudaMemcpyDeviceToHost);
-	for (int i = 0; i < NUM_ELEMENTS; i++) {
+	mod<<<NUM_BLOCKS, BLOCK_SIZE>>>(dev_a, dev_b, dev_c, TOTAL_THREADS);
+    cudaMemcpy(c, dev_c, TOTAL_THREADS * sizeof(int), cudaMemcpyDeviceToHost);
+	for (int i = 0; i < TOTAL_THREADS; i++) {
 		printf("%d %% %d = %d \n", a[i], b[i], c[i]);
 	}
 }
 
-void run_noreg_calcs(int *a, int *b, int *c, int *dev_a, int *dev_b, int *dev_c) {
-    printf("Calculations for %d block(s) of size %d threads \n", NUM_BLOCKS, 
-            NUM_ELEMENTS);
+void shared_calcs(int *a, int *b, int *c, int *dev_a, int *dev_b, int *dev_c) {
+	printf("Shared Memory Calculations for 1 block of size %d threads \n", 
+            BLOCK_SIZE);
+	add_shared<<<NUM_BLOCKS, BLOCK_SIZE>>>(dev_a, dev_b, dev_c, TOTAL_THREADS);
+	cudaMemcpy(c, dev_c, TOTAL_THREADS * sizeof(int), cudaMemcpyDeviceToHost);
 
 	printf("Addition Calculations: \n");
-	add<<<NUM_BLOCKS, NUM_ELEMENTS>>>(dev_a, dev_b, dev_c, NUM_ELEMENTS);
-    cudaMemcpy(c, dev_c, NUM_ELEMENTS * sizeof(int), cudaMemcpyDeviceToHost);
-	for (int i = 0; i < NUM_ELEMENTS; i++) {
+	for (int i = 0; i < TOTAL_THREADS; i++) {
 		printf("%d + %d = %d \n", a[i], b[i], c[i]);
 	}
 
+    sub_shared<<<NUM_BLOCKS, BLOCK_SIZE>>>(dev_a, dev_b, dev_c, TOTAL_THREADS);
+	cudaMemcpy(c, dev_c, TOTAL_THREADS * sizeof(int), cudaMemcpyDeviceToHost);
+
 	printf("Subtraction Calculations: \n");
-	sub<<<NUM_BLOCKS, NUM_ELEMENTS>>>(dev_a, dev_b, dev_c, NUM_ELEMENTS);
-    cudaMemcpy(c, dev_c, NUM_ELEMENTS * sizeof(int), cudaMemcpyDeviceToHost);
-	for (int i = 0; i < NUM_ELEMENTS; i++) {
+	for (int i = 0; i < TOTAL_THREADS; i++) {
 		printf("%d - %d = %d \n", a[i], b[i], c[i]);
 	}
 
+	mult_shared<<<NUM_BLOCKS, BLOCK_SIZE>>>(dev_a, dev_b, dev_c, TOTAL_THREADS);
+	cudaMemcpy(c, dev_c, TOTAL_THREADS * sizeof(int), cudaMemcpyDeviceToHost);
+
 	printf("Multiplication Calculations: \n");
-	mult<<<NUM_BLOCKS, NUM_ELEMENTS>>>(dev_a, dev_b, dev_c, NUM_ELEMENTS);
-    cudaMemcpy(c, dev_c, NUM_ELEMENTS * sizeof(int), cudaMemcpyDeviceToHost);
-	for (int i = 0; i < NUM_ELEMENTS; i++) {
+	for (int i = 0; i < TOTAL_THREADS; i++) {
 		printf("%d * %d = %d \n", a[i], b[i], c[i]);
 	}
 
+	mod_shared<<<NUM_BLOCKS, BLOCK_SIZE>>>(dev_a, dev_b, dev_c, TOTAL_THREADS);
+	cudaMemcpy(c, dev_c, TOTAL_THREADS * sizeof(int), cudaMemcpyDeviceToHost);
+
 	printf("Modulo Calculations: \n");
-	mod<<<NUM_BLOCKS, NUM_ELEMENTS>>>(dev_a, dev_b, dev_c, NUM_ELEMENTS);
-    cudaMemcpy(c, dev_c, NUM_ELEMENTS * sizeof(int), cudaMemcpyDeviceToHost);
-	for (int i = 0; i < NUM_ELEMENTS; i++) {
+	for (int i = 0; i < TOTAL_THREADS; i++) {
 		printf("%d %% %d = %d \n", a[i], b[i], c[i]);
-	}    
+	}
 }
 
 void run_cipher(char *b, char *c, char *dev_a, char *dev_b, char *dev_c,
@@ -192,20 +263,21 @@ void run_cipher(char *b, char *c, char *dev_a, char *dev_b, char *dev_c,
 
 void main_pageable() {
     int *dev_a, *dev_b, *dev_c;
-	int a[NUM_ELEMENTS], b[NUM_ELEMENTS], c[NUM_ELEMENTS];
-	cudaMalloc(&dev_a, NUM_ELEMENTS * sizeof(int));
-	cudaMalloc(&dev_b, NUM_ELEMENTS * sizeof(int));
-	cudaMalloc(&dev_c, NUM_ELEMENTS * sizeof(int));
+	int a[TOTAL_THREADS], b[TOTAL_THREADS], c[TOTAL_THREADS];
+	cudaMalloc(&dev_a, TOTAL_THREADS * sizeof(int));
+	cudaMalloc(&dev_b, TOTAL_THREADS * sizeof(int));
+	cudaMalloc(&dev_c, TOTAL_THREADS * sizeof(int));
 
 	srand(time(NULL));
-	for (int i = 0; i < NUM_ELEMENTS; i++) {
+	for (int i = 0; i < TOTAL_THREADS; i++) {
 		a[i] = i;
 		b[i] = rand() % 3;
 	}
 
-	cudaMemcpy(dev_a, a, NUM_ELEMENTS * sizeof(int), cudaMemcpyHostToDevice);
-	cudaMemcpy(dev_b, b, NUM_ELEMENTS * sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpy(dev_a, a, TOTAL_THREADS * sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpy(dev_b, b, TOTAL_THREADS * sizeof(int), cudaMemcpyHostToDevice);
 
+    printf("Pageable Host Memory: \n");
     run_calcs(a, b, c, dev_a, dev_b, dev_c);
 
     cudaFree(dev_a);
@@ -215,22 +287,23 @@ void main_pageable() {
 
 void main_pinned() {
     int *a, *b, *c, *dev_a, *dev_b, *dev_c;
-	cudaMallocHost((int**)&a, NUM_ELEMENTS * sizeof(int));
-	cudaMallocHost((int**)&b, NUM_ELEMENTS * sizeof(int));
-	cudaMallocHost((int**)&c, NUM_ELEMENTS * sizeof(int));
-	cudaMalloc(&dev_a, NUM_ELEMENTS * sizeof(int));
-	cudaMalloc(&dev_b, NUM_ELEMENTS * sizeof(int));
-	cudaMalloc(&dev_c, NUM_ELEMENTS * sizeof(int));
+	cudaMallocHost((int**)&a, TOTAL_THREADS * sizeof(int));
+	cudaMallocHost((int**)&b, TOTAL_THREADS * sizeof(int));
+	cudaMallocHost((int**)&c, TOTAL_THREADS * sizeof(int));
+	cudaMalloc(&dev_a, TOTAL_THREADS * sizeof(int));
+	cudaMalloc(&dev_b, TOTAL_THREADS * sizeof(int));
+	cudaMalloc(&dev_c, TOTAL_THREADS * sizeof(int));
 
     srand(time(NULL));
-	for (int i = 0; i < NUM_ELEMENTS; i++) {
+	for (int i = 0; i < TOTAL_THREADS; i++) {
 		a[i] = i;
 		b[i] = rand() % 3;
 	}
 
-	cudaMemcpy(dev_a, a, NUM_ELEMENTS * sizeof(int), cudaMemcpyHostToDevice);
-	cudaMemcpy(dev_b, b, NUM_ELEMENTS * sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpy(dev_a, a, TOTAL_THREADS * sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpy(dev_b, b, TOTAL_THREADS * sizeof(int), cudaMemcpyHostToDevice);
 
+    printf("Pinned Host Memory: \n");
     run_calcs(a, b, c, dev_a, dev_b, dev_c);
 
     cudaFree(dev_a);
@@ -261,32 +334,34 @@ void main_caesar() {
 
 void main_reg_timing() {
     int *dev_a, *dev_b, *dev_c;
-	int a[NUM_ELEMENTS], b[NUM_ELEMENTS], c[NUM_ELEMENTS];
-	cudaMalloc(&dev_a, NUM_ELEMENTS * sizeof(int));
-	cudaMalloc(&dev_b, NUM_ELEMENTS * sizeof(int));
-	cudaMalloc(&dev_c, NUM_ELEMENTS * sizeof(int));
+	int a[TOTAL_THREADS], b[TOTAL_THREADS], c[TOTAL_THREADS];
+	cudaMalloc(&dev_a, TOTAL_THREADS * sizeof(int));
+	cudaMalloc(&dev_b, TOTAL_THREADS * sizeof(int));
+	cudaMalloc(&dev_c, TOTAL_THREADS * sizeof(int));
 
 	srand(time(NULL));
-	for (int i = 0; i < NUM_ELEMENTS; i++) {
+	for (int i = 0; i < TOTAL_THREADS; i++) {
 		a[i] = i;
 		b[i] = rand() % 3;
 	}
 
-	cudaMemcpy(dev_a, a, NUM_ELEMENTS * sizeof(int), cudaMemcpyHostToDevice);
-	cudaMemcpy(dev_b, b, NUM_ELEMENTS * sizeof(int), cudaMemcpyHostToDevice);
-
+	cudaMemcpy(dev_a, a, TOTAL_THREADS * sizeof(int), cudaMemcpyHostToDevice);
+	cudaMemcpy(dev_b, b, TOTAL_THREADS * sizeof(int), cudaMemcpyHostToDevice);
+    
+    printf("Register Calculations: \n");
     clock_t start = clock();
     run_calcs(a, b, c, dev_a, dev_b, dev_c);
     double register_time = ((double) (clock() - start)) / CLOCKS_PER_SEC;
 
+    printf("Shared Memory Calculations: \n");
     start = clock();
-    run_noreg_calcs(a, b, c, dev_a, dev_b, dev_c);
-    double noreg_time = ((double) (clock() - start)) / CLOCKS_PER_SEC;
+    shared_calcs(a, b, c, dev_a, dev_b, dev_c);
+    double shared_time = ((double) (clock() - start)) / CLOCKS_PER_SEC;
 
 	printf("Time taken with registers: \
            %f seconds. \n", register_time);
-	printf("Time taken without registers: \
-           %f seconds. \n", noreg_time);
+	printf("Time taken with shared memory: \
+           %f seconds. \n", shared_time);
 
     cudaFree(dev_a);
 	cudaFree(dev_b);
@@ -294,22 +369,10 @@ void main_reg_timing() {
 }
 
 int main(int argc, char** argv) {
-    clock_t start = clock();
     main_pageable();
-    double pageable_time = ((double) (clock() - start)) / CLOCKS_PER_SEC;
-
-    start = clock();
     main_pinned();
-	double pinned_time = ((double) (clock() - start)) / CLOCKS_PER_SEC;
-
-	printf("Time taken for pageable memory: \
-           %f seconds. \n", pageable_time);
-	printf("Time taken for pinned memory: \
-           %f seconds. \n", pinned_time);
-
     main_caesar();
-
-    // main_reg_timing();
+    main_reg_timing();
 
 	return 0;
 }
