@@ -1,0 +1,55 @@
+Pageable Memory: 
+cuBLAS: 
+Vector A is: 0.000000 1.000000 2.000000 3.000000 
+Vector B is: 7.000000 4.000000 4.000000 6.000000 
+
+The smallest index of the element with max magnitude of Vector B is: 0
+The value of Vector B at index 0 is 7.000000
+
+The smallest index of the element with min magnitude of Vector B is: 1
+The value of Vector B at index 1 is 4.000000
+
+The sum of Vector B is: 21.000000
+
+The dot product of Vector A and B is: 30.000000
+
+cuSPARSE: 
+Vector A is: 0.000000 1.000000 2.000000 3.000000 
+Vector B is: 0.000000 0.000000 0.000000 6.000000 
+
+Vector A plus Vector B is: 0.000000 1.000000 2.000000 9.000000 
+
+Vector A gathered into Vector B is: 0.000000 0.000000 0.000000 3.000000 
+
+Vector B scattered into Vector A is: 0.000000 1.000000 2.000000 6.000000 
+
+The result of the Givens rotation on Vector A and B is: 
+Vector A: 0.000000 1.000000 2.000000 -3.696150 0.000000 0.000000 0.000000 5.598075 Pinned Memory: 
+cuBLAS: 
+Vector A is: 0.000000 1.000000 2.000000 3.000000 
+Vector B is: 2.000000 8.000000 1.000000 2.000000 
+
+The smallest index of the element with max magnitude of Vector B is: 1
+The value of Vector B at index 1 is 8.000000
+
+The smallest index of the element with min magnitude of Vector B is: 2
+The value of Vector B at index 2 is 1.000000
+
+The sum of Vector B is: 13.000000
+
+The dot product of Vector A and B is: 16.000000
+
+cuSPARSE: 
+Vector A is: 0.000000 1.000000 2.000000 3.000000 
+Vector B is: 0.000000 0.000000 0.000000 2.000000 
+
+Vector A plus Vector B is: 0.000000 1.000000 2.000000 5.000000 
+
+Vector A gathered into Vector B is: 0.000000 0.000000 0.000000 3.000000 
+
+Vector B scattered into Vector A is: 0.000000 1.000000 2.000000 2.000000 
+
+The result of the Givens rotation on Vector A and B is: 
+Vector A: 0.000000 1.000000 2.000000 -0.232050 0.000000 0.000000 0.000000 3.598075 
+Time taken for pageable host memory: 266.218000 ms 
+Time taken for pinned host memory: 0.735000 ms 
