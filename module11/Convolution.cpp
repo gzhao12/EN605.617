@@ -18,6 +18,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <chrono>
 
 #ifdef __APPLE__
 #include <OpenCL/cl.h>
@@ -30,32 +31,26 @@
 #endif
 
 // Constants
-const unsigned int inputSignalWidth  = 8;
-const unsigned int inputSignalHeight = 8;
+const unsigned int inputSignalWidth  = 49;
+const unsigned int inputSignalHeight = 49;
 
-cl_uint inputSignal[inputSignalHeight][inputSignalWidth] =
-{
-	{3, 1, 1, 4, 8, 2, 1, 3},
-	{4, 2, 1, 1, 2, 1, 2, 3},
-	{4, 4, 4, 4, 3, 2, 2, 2},
-	{9, 8, 3, 8, 9, 0, 0, 0},
-	{9, 3, 3, 9, 0, 0, 0, 0},
-	{0, 9, 0, 8, 0, 0, 0, 0},
-	{3, 0, 8, 8, 9, 4, 4, 4},
-	{5, 9, 8, 1, 8, 1, 1, 1}
-};
-
-const unsigned int outputSignalWidth  = 6;
-const unsigned int outputSignalHeight = 6;
+const unsigned int outputSignalWidth  = 43;
+const unsigned int outputSignalHeight = 43;
 
 cl_uint outputSignal[outputSignalHeight][outputSignalWidth];
 
-const unsigned int maskWidth  = 3;
-const unsigned int maskHeight = 3;
+const unsigned int maskWidth  = 7;
+const unsigned int maskHeight = 7;
 
 cl_uint mask[maskHeight][maskWidth] =
 {
-	{1, 1, 1}, {1, 0, 1}, {1, 1, 1},
+	{1, 1, 1, 1, 1, 1, 1}, 
+    {1, 0, 0, 0, 0, 0, 1}, 
+    {1, 0, 0, 1, 0, 0, 1},
+    {0, 1, 1, 0, 1, 1, 0},
+    {0, 1, 0, 0, 0, 1, 0},
+    {1, 0, 1, 1, 1, 0, 1},
+    {1, 1, 0, 1, 0, 1, 1}
 };
 
 ///
@@ -86,6 +81,7 @@ void CL_CALLBACK contextCallback(
 //
 int main(int argc, char** argv)
 {
+    auto start = std::chrono::high_resolution_clock::now();
     cl_int errNum;
     cl_uint numPlatforms;
 	cl_uint numDevices;
@@ -98,6 +94,14 @@ int main(int argc, char** argv)
 	cl_mem inputSignalBuffer;
 	cl_mem outputSignalBuffer;
 	cl_mem maskBuffer;
+
+    cl_uint inputSignal[inputSignalHeight][inputSignalWidth];
+    srand(time(NULL));
+    for (int i = 0; i < inputSignalHeight; i++) {
+        for (int j = 0; j < inputSignalWidth; j++) {
+            inputSignal[i][j] = rand() % 10;
+        }
+    }
 
     // First, select an OpenCL platform to run on.  
 	errNum = clGetPlatformIDs(0, NULL, &numPlatforms);
@@ -293,6 +297,12 @@ int main(int argc, char** argv)
 		}
 		std::cout << std::endl;
 	}
+
+    auto stop = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> duration = stop - start;
+    auto time_taken = duration.count();
+
+    std::cout << "Time taken for all calculations: " << time_taken << " ms" << std::endl;
 
     std::cout << std::endl << "Executed program succesfully." << std::endl;
 
